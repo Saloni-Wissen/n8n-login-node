@@ -3,6 +3,7 @@ import {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  NodeConnectionType,
 } from 'n8n-workflow';
 
 export class LoginNode implements INodeType {
@@ -16,8 +17,8 @@ export class LoginNode implements INodeType {
     defaults: {
       name: 'LoginNode',
     },
-    inputs: [],
-    outputs: [],
+    inputs: [NodeConnectionType.Main],
+    outputs: [NodeConnectionType.Main],
     properties: [
       {
         displayName: 'Organization Name',
