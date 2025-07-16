@@ -6,6 +6,7 @@ import {
   NodeConnectionType,
   ApplicationError,
 } from 'n8n-workflow';
+import { normalizeUsername } from '../../utils/normalize';
 
 export class LoginNode implements INodeType {
   description: INodeTypeDescription = {
@@ -81,7 +82,8 @@ export class LoginNode implements INodeType {
 
     for (let i = 0; i < items.length; i++) {
       const org = this.getNodeParameter('orgName', i) as string;
-      const username = this.getNodeParameter('username', i) as string;
+      const rawUsername = this.getNodeParameter('username', i) as string;
+      const safeUsername = normalizeUsername(rawUsername);
       const loginUrl = this.getNodeParameter('loginUrl', i) as string;
       const secretBaseUrl = this.getNodeParameter('secretBaseUrl', i) as string;
       const browserBaseUrl = this.getNodeParameter('browserBaseUrl', i) as string;
@@ -94,7 +96,7 @@ export class LoginNode implements INodeType {
           url: `${secretBaseUrl}/secrets/secret`,
           body: {
             organization_name: org,
-            username: username,
+            username: safeUsername,
             cloud_provider: cloud_provider,
           },
           json: true,
@@ -107,7 +109,7 @@ export class LoginNode implements INodeType {
         }
 
         // Extract actual username from the format "domain-username" (e.g., "google-com-raman" -> "raman")
-        const actualUsername = username.includes('-') ? username.split('-').pop() : username;
+        const actualUsername = rawUsername.includes('-') ? rawUsername.split('-').pop() : rawUsername;
 
         // 2. Trigger Browser-Use login task
         const browserRes = await this.helpers.request({
