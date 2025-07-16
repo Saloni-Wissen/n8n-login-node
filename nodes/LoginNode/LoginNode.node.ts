@@ -4,6 +4,7 @@ import {
   INodeType,
   INodeTypeDescription,
   NodeConnectionType,
+  ApplicationError,
 } from 'n8n-workflow';
 
 export class LoginNode implements INodeType {
@@ -54,6 +55,9 @@ export class LoginNode implements INodeType {
         displayName: 'Session ID',
         name: 'sessionId',
         type: 'string',
+        typeOptions: {
+          password: true,
+        },
         default: '',
       },
       {
@@ -82,33 +86,36 @@ export class LoginNode implements INodeType {
       const secretBaseUrl = this.getNodeParameter('secretBaseUrl', i) as string;
       const browserBaseUrl = this.getNodeParameter('browserBaseUrl', i) as string;
       const sessionId = this.getNodeParameter('sessionId', i) as string;
-
+      const cloud_provider = this.getNodeParameter("cloudProvider",i) as string;
       try {
         // 1. Get password from secret server (Azure path)
         const secretRes = await this.helpers.request({
           method: 'POST',
-          url: `${secretBaseUrl}/vault/retrieve`,
+          url: `${secretBaseUrl}/secrets/secret`,
           body: {
-            organisation: org,
-            domain: loginUrl, // using loginUrl as domain placeholder
-            user: username,
+            organization_name: org,
+            username: username,
+            cloud_provider: cloud_provider,
           },
           json: true,
         });
-        const password = secretRes.password;
+
+        // Extract password and validate
+        const password = secretRes.secret || secretRes.password || secretRes.secret_value || secretRes.value;
+        if (!password) {
+          throw new ApplicationError(`Password not found in secret response. Response: ${JSON.stringify(secretRes)}`);
+        }
+
+        // Extract actual username from the format "domain-username" (e.g., "google-com-raman" -> "raman")
+        const actualUsername = username.includes('-') ? username.split('-').pop() : username;
 
         // 2. Trigger Browser-Use login task
         const browserRes = await this.helpers.request({
           method: 'POST',
-          url: `${browserBaseUrl}/api/task`,
+          url: `${browserBaseUrl}/task/execute`,
           body: {
             session_id: sessionId,
-            action: 'login',
-            data: {
-              loginUrl,
-              username,
-              password,
-            },
+            task: `navigate to the url ${loginUrl} and login with username as ${actualUsername} and password as ${password}`
           },
           json: true,
         });
