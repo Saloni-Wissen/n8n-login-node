@@ -6,13 +6,13 @@ import {
   NodeConnectionType,
   ApplicationError,
 } from 'n8n-workflow';
-import { normalizeUsername } from '../../utils/normalize';
+
 
 export class LoginNode implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Login Node',
     name: 'loginNode',
-    icon: 'file:icons8-vault-68.svg',
+    icon: 'file:icons/logo.svg',
     group: ['transform'],
     version: 1,
     description: 'Custom login node to authenticate and trigger browser automation',
@@ -21,36 +21,28 @@ export class LoginNode implements INodeType {
     },
     inputs: [NodeConnectionType.Main],
     outputs: [NodeConnectionType.Main],
+
     properties: [
       {
         displayName: 'Organization Name',
         name: 'orgName',
         type: 'string',
         default: '',
+        description: 'Name of the organization',
       },
       {
         displayName: 'Username',
         name: 'username',
         type: 'string',
         default: '',
+        description: 'Username for login',
       },
       {
         displayName: 'Login URL',
         name: 'loginUrl',
         type: 'string',
         default: '',
-      },
-      {
-        displayName: 'Secret Server Base URL',
-        name: 'secretBaseUrl',
-        type: 'string',
-        default: '',
-      },
-      {
-        displayName: 'Browser-Use Base URL',
-        name: 'browserBaseUrl',
-        type: 'string',
-        default: 'http://localhost:5678',
+        description: 'URL where login should be performed',
       },
       {
         displayName: 'Session ID',
@@ -60,19 +52,9 @@ export class LoginNode implements INodeType {
           password: true,
         },
         default: '',
+        description: 'Session ID for browser automation',
       },
-      {
-        displayName: 'Cloud Provider',
-        name: 'cloudProvider',
-        type: 'options',
-        options: [
-          {
-            name: 'Azure',
-            value: 'azure',
-          },
-        ],
-        default: 'azure',
-      },
+
     ],
   };
 
@@ -80,24 +62,26 @@ export class LoginNode implements INodeType {
     const items = this.getInputData();
     const returnData: INodeExecutionData[] = [];
 
+
+
+
     for (let i = 0; i < items.length; i++) {
       const org = this.getNodeParameter('orgName', i) as string;
       const rawUsername = this.getNodeParameter('username', i) as string;
-      const safeUsername = normalizeUsername(rawUsername);
       const loginUrl = this.getNodeParameter('loginUrl', i) as string;
-      const secretBaseUrl = this.getNodeParameter('secretBaseUrl', i) as string;
-      const browserBaseUrl = this.getNodeParameter('browserBaseUrl', i) as string;
       const sessionId = this.getNodeParameter('sessionId', i) as string;
-      const cloud_provider = this.getNodeParameter("cloudProvider",i) as string;
+
+
       try {
-        // 1. Get password from secret server (Azure path)
+
         const secretRes = await this.helpers.request({
           method: 'POST',
-          url: `${secretBaseUrl}/secrets/secret`,
+          url: `http://10.0.2.6:8000/api/api/retrieve-password`,
           body: {
             organization_name: org,
-            username: safeUsername,
-            cloud_provider: cloud_provider,
+            username: rawUsername,
+            login_url: loginUrl,
+
           },
           json: true,
         });
@@ -105,26 +89,31 @@ export class LoginNode implements INodeType {
         // Extract password and validate
         const password = secretRes.secret || secretRes.password || secretRes.secret_value || secretRes.value;
         if (!password) {
-          throw new ApplicationError(`Password not found in secret response. Response: ${JSON.stringify(secretRes)}`);
+         throw new ApplicationError(`Password not found in secret response.
+         Request: ${JSON.stringify({ org, loginUrl, rawUsername })}
+         Response: ${JSON.stringify(secretRes)}`);
+
         }
 
-        // Extract actual username from the format "domain-username" (e.g., "google-com-raman" -> "raman")
+
         const actualUsername = rawUsername.includes('-') ? rawUsername.split('-').pop() : rawUsername;
 
-        // 2. Trigger Browser-Use login task
+
         const browserRes = await this.helpers.request({
           method: 'POST',
-          url: `${browserBaseUrl}/task/execute`,
+          url: `http://10.0.2.6:8000/api/task/execute`,
           body: {
             session_id: sessionId,
-            task: `navigate to the url ${loginUrl} and login with username as ${actualUsername} and password as ${password}`
+            task: `navigate to the ${loginUrl} and Login with the Username as ${actualUsername} and password as ${password} and stop execution after login `
           },
           json: true,
         });
 
+
         returnData.push({
           json: {
             success: true,
+
             loginResult: browserRes,
           },
         });
@@ -133,6 +122,7 @@ export class LoginNode implements INodeType {
           json: {
             success: false,
             error: error.message || error,
+
           },
         });
       }
